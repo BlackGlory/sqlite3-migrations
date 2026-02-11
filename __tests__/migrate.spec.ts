@@ -1,6 +1,8 @@
-import sqlite3 from 'sqlite3'
+import { describe, test, expect } from 'vitest'
+import { Database } from 'sqlite3'
 import { migrate, IMigration } from '@src/migrate.js'
 import { promisify } from 'extra-promise'
+import { getErrorAsync } from 'return-style'
 
 const migrations: IMigration[] = [
   {
@@ -51,23 +53,40 @@ const migrations: IMigration[] = [
 ]
 
 describe('migrate', () => {
-  describe('The maximum version of migrations < user_version', () => {
-    it('skip migrations', async () => {
-      const db = new sqlite3.Database(':memory:')
+  describe('The maximum known migration version < user_version', () => {
+    test('throwOnNewerVersion = false', async () => {
+      const db = new Database(':memory:')
       await setDatabaseVersion(db, 999)
 
-      await migrate(db, migrations, 2)
-      const versionAfter = await getDatabaseVersion(db)
+      await migrate(db, migrations, {
+        targetVersion: 2
+      , throwOnNewerVersion: false
+      })
+      const version = await getDatabaseVersion(db)
 
-      expect(versionAfter).toBe(999)
+      expect(version).toBe(999)
+    })
+
+    test('', async () => {
+      const db = new Database(':memory:')
+      setDatabaseVersion(db, 999)
+
+      const error = await getErrorAsync(() => migrate(db, migrations, {
+        targetVersion: 2
+      , throwOnNewerVersion: true
+      }))
+
+      expect(error).toBeInstanceOf(Error)
+      const version = await getDatabaseVersion(db)
+      expect(version).toBe(999)
     })
   })
 
   test('upgrade', async () => {
-    const db = new sqlite3.Database(':memory:')
+    const db = new Database(':memory:')
 
     const versionBefore = await getDatabaseVersion(db)
-    await migrate(db, migrations, 2)
+    await migrate(db, migrations, { targetVersion: 2 })
     const versionAfter = await getDatabaseVersion(db)
     const tables = await getDatabaseTables(db)
     const schema = await getTableSchema(db, 'test')
@@ -88,11 +107,11 @@ describe('migrate', () => {
   })
 
   test('downgrade', async () => {
-    const db = new sqlite3.Database(':memory:')
-    await migrate(db, migrations, 2)
+    const db = new Database(':memory:')
+    await migrate(db, migrations, { targetVersion: 2 })
 
     const versionBefore = await getDatabaseVersion(db)
-    await migrate(db, migrations, 0)
+    await migrate(db, migrations, { targetVersion: 0 })
     const versionAfter = await getDatabaseVersion(db)
     const tables = await getDatabaseTables(db)
 
@@ -103,13 +122,13 @@ describe('migrate', () => {
 })
 
 async function setDatabaseVersion(
-  db: sqlite3.Database
+  db: Database
 , version: number
 ): Promise<void> {
   await promisify(db.exec.bind(db))(`PRAGMA user_version = ${version};`)
 }
 
-async function getDatabaseVersion(db: sqlite3.Database): Promise<number> {
+async function getDatabaseVersion(db: Database): Promise<number> {
   const result = await promisify(db.get.bind(db))('PRAGMA user_version;') as {
     user_version: number
   }
@@ -118,7 +137,7 @@ async function getDatabaseVersion(db: sqlite3.Database): Promise<number> {
 }
 
 async function getTableSchema(
-  db: sqlite3.Database
+  db: Database
 , tableName: string
 ): Promise<Array<{
   name: string
@@ -132,7 +151,7 @@ async function getTableSchema(
   return result
 }
 
-async function getDatabaseTables(db: sqlite3.Database): Promise<string[]> {
+async function getDatabaseTables(db: Database): Promise<string[]> {
   const result = await promisify(db.all.bind(db))(`
     SELECT name
       FROM sqlite_master

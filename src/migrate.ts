@@ -1,6 +1,7 @@
 import type { Database } from 'sqlite3'
 import { assert, isFunction } from '@blackglory/prelude'
 import { promisify } from 'extra-promise'
+import { max } from 'extra-utils'
 
 export interface IMigration {
   version: number
@@ -8,10 +9,18 @@ export interface IMigration {
   down: string | ((db: Database) => PromiseLike<void>)
 }
 
+interface IMigrateOptions {
+  targetVersion?: number
+  throwOnNewerVersion?: boolean
+}
+
 export async function migrate(
   db: Database
 , migrations: IMigration[]
-, targetVersion: number = getMaximumVersion(migrations)
+, {
+    targetVersion = getMaximumVersion(migrations)
+  , throwOnNewerVersion = false
+  }: IMigrateOptions = {}
 ): Promise<void> {
   const run = promisify(db.run.bind(db))
   const exec = promisify(db.exec.bind(db))
@@ -19,17 +28,19 @@ export async function migrate(
 
   const maxVersion = getMaximumVersion(migrations)
 
-  await run('BEGIN IMMEDIATE')
-  try {
-    while (true) {
+  while (true) {
+    await run('BEGIN IMMEDIATE')
+    try {
       const done = await migrate(targetVersion, maxVersion)
-      if (done) break
-    }
 
-    await run('COMMIT')
-  } catch (e) {
-    await run('ROLLBACK')
-    throw e
+      await run('COMMIT')
+
+      if (done) break
+    } catch (e) {
+      await run('ROLLBACK')
+
+      throw e
+    }
   }
 
   async function migrate(
@@ -38,7 +49,11 @@ export async function migrate(
   ): Promise<boolean> {
     const currentVersion = await getDatabaseVersion()
     if (maxVersion < currentVersion) {
-      return true
+      if (throwOnNewerVersion) {
+        throw new Error(`Database version ${currentVersion} is higher than the maximum known migration version.`)
+      } else {
+        return true
+      }
     } else {
       if (currentVersion === targetVersion) {
         return true
@@ -57,7 +72,7 @@ export async function migrate(
     const targetVersion = currentVersion + 1
 
     const migration = migrations.find(x => x.version === targetVersion)
-    assert(migration, `Cannot find migration for version ${targetVersion}`)
+    assert(migration, `Cannot find a migration for version ${targetVersion}.`)
 
     try {
       if (isFunction(migration.up)) {
@@ -66,8 +81,10 @@ export async function migrate(
         await exec(migration.up)
       }
     } catch (e) {
-      console.error(`Upgrade from version ${currentVersion} to version ${targetVersion} failed.`)
-      throw e
+      throw new Error(
+        `Upgrade from version ${currentVersion} to version ${targetVersion} failed.`
+      , { cause: e }
+      )
     }
     await setDatabaseVersion(targetVersion)
   }
@@ -77,7 +94,7 @@ export async function migrate(
     const targetVersion = currentVersion - 1
 
     const migration = migrations.find(x => x.version === currentVersion)
-    assert(migration, `Cannot find migration for version ${targetVersion}`)
+    assert(migration, `Cannot find a migration for version ${targetVersion}`)
 
     try {
       if (isFunction(migration.down)) {
@@ -86,26 +103,30 @@ export async function migrate(
         await exec(migration.down)
       }
     } catch (e) {
-      console.error(`Downgrade from version ${currentVersion} to version ${targetVersion} failed.`)
-      throw e
+      throw new Error(
+        `Downgrade from version ${currentVersion} to version ${targetVersion} failed.`
+      , { cause: e }
+      )
     }
     await setDatabaseVersion(targetVersion)
   }
 
   async function getDatabaseVersion(): Promise<number> {
-    const row = await get('PRAGMA user_version;') as {
+    const row = await get('PRAGMA user_version') as {
       user_version: number
     }
 
-    return row.user_version
+    return row['user_version']
   }
 
   async function setDatabaseVersion(version: number): Promise<void> {
     // PRAGMA不支持变量
-    await run(`PRAGMA user_version = ${ version }`)
+    await run(`PRAGMA user_version = ${version}`)
   }
 }
 
 function getMaximumVersion(migrations: IMigration[]): number {
-  return migrations.reduce((max, cur) => Math.max(cur.version, max), 0)
+  return migrations
+    .map(x => x.version)
+    .reduce(max)
 }
