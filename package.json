@@ -1,6 +1,6 @@
 {
   "name": "@blackglory/sqlite3-migrations",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A utility for database migrations with sqlite3",
   "keywords": [
     "migration",
