@@ -88,12 +88,12 @@ describe('migrate', () => {
     const versionBefore = await getDatabaseVersion(db)
     await migrate(db, migrations, { targetVersion: 2 })
     const versionAfter = await getDatabaseVersion(db)
-    const tables = await getDatabaseTables(db)
-    const schema = await getTableSchema(db, 'test')
 
     expect(versionBefore).toBe(0)
     expect(versionAfter).toBe(2)
+    const tables = await getDatabaseTables(db)
     expect(tables).toEqual(['test'])
+    const schema = await getTableSchema(db, 'test')
     expect(schema).toMatchObject([
       {
         name: 'id'
@@ -113,10 +113,10 @@ describe('migrate', () => {
     const versionBefore = await getDatabaseVersion(db)
     await migrate(db, migrations, { targetVersion: 0 })
     const versionAfter = await getDatabaseVersion(db)
-    const tables = await getDatabaseTables(db)
 
     expect(versionBefore).toBe(2)
     expect(versionAfter).toBe(0)
+    const tables = await getDatabaseTables(db)
     expect(tables).toEqual([])
   })
 })
