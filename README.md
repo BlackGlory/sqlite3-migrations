@@ -35,7 +35,7 @@ function migrate(
     targetVersion?: number
     throwOnNewerVersion?: boolean = false
   }
-): void
+): Promise<void>
 ```
 
 If `options.targetVersion` is `undefined`,
