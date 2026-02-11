@@ -128,5 +128,5 @@ export async function migrate(
 function getMaximumVersion(migrations: IMigration[]): number {
   return migrations
     .map(x => x.version)
-    .reduce(max)
+    .reduce(max, 0)
 }
