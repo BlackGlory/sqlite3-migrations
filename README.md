@@ -17,8 +17,8 @@ yarn add @blackglory/sqlite3-migrations
 ```ts
 interface IMigration {
   version: number
-  up: string | ((db: Database) => void)
-  down: string | ((db: Database) => void)
+  up: string | ((db: Database) => PromiseLike<void>)
+  down: string | ((db: Database) => PromiseLike<void>)
 }
 ```
 
